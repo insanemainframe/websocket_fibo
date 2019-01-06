@@ -4,7 +4,6 @@ import logging
 import asyncio
 from weakref import WeakSet
 from concurrent.futures import ProcessPoolExecutor
-from time import sleep
 
 import aiohttp.web
 from aiohttp.http_websocket import WSCloseCode
@@ -16,8 +15,11 @@ PORT = int(os.getenv('PORT', 8000))
 
 MESSAGE_MAX_SIZE = int(os.getenv('MESSAGE_MAX_SIZE', 20))
 FIBO_MAX_N = int(os.getenv('FIBO_MAX_N', 10 ** 12))
-FIBO_MAX_WORKERS = int(os.getenv('FIBO_MAX_WORKERS', 4))
+MAX_WORKERS = int(os.getenv('MAX_WORKERS', 4))
 TIMEOUT = int(os.getenv('TIMEOUT', 0))
+
+
+logger = logging.getLogger(__file__)
 
 
 class ErrorResult(Exception):
@@ -40,49 +42,34 @@ def fibo(n):
     return a
 
 
-def sleep_func(message):
-    seconds = -int(message)
-    logging.info('sleeping %s', seconds)
-    sleep(seconds)
-    return 'waked up'
-
-
-def get_fibo(message):
-    import signal
-    logging.debug('get_fibo %s start', message)
+def get_fibo_result(message):
+    logger.debug('start %s', message)
     try:
-        if message.startswith('-'):
-            return sleep_func(message)
         if message and not message.isdigit():
-            raise ErrorResult('not integer')
+            raise ErrorResult('must be positive integer')
         return fibo(int(message or 0))
     finally:
-        print(signal.getsignal(signal.SIGINT))
-        logging.debug('get_fibo %s stop', message)
+        logger.debug('stop %s', message)
 
 
 class WSTaskExecutorHandler:
     def __init__(self, executor, target):
         self.executor = executor
         self.target = target
-        self.websockets = WeakSet()
 
     async def __call__(self, request):
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(request)
-        print('add', id(ws))
         request.app['websockets'].add(ws)
-        print('add', ws)
         try:
             async for msg in ws:
                 await self._handle_msg(ws, msg)
         finally:
-            print('discard', id(ws))
             request.app['websockets'].discard(ws)
         return ws
 
     async def _handle_msg(self, ws, msg):
-        logging.debug(msg)
+        logger.debug(msg)
         if msg.type != aiohttp.WSMsgType.TEXT:
             await ws.close(
                 code=WSCloseCode.UNSUPPORTED_DATA,
@@ -109,7 +96,7 @@ class WSTaskExecutorHandler:
                 message='GOING_AWAY',
             )
         except Exception as e:
-            logging.exception('INTERNAL_ERROR %s', e)
+            logger.exception('INTERNAL_ERROR %s', e)
             await ws.close(
                 code=WSCloseCode.INTERNAL_ERROR,
                 message='INTERNAL_ERROR',
@@ -119,7 +106,7 @@ class WSTaskExecutorHandler:
         loop = asyncio.get_event_loop()
         try:
             result_future = loop.run_in_executor(
-                self.executor, get_fibo, message,
+                self.executor, get_fibo_result, message,
             )
             result = await asyncio.wait_for(
                 result_future,
@@ -143,16 +130,15 @@ class GracefulShutdownWSApplication(aiohttp.web.Application):
         self['websockets'] = WeakSet()
 
         async def on_shutdown(app):
-            print('shutdown websockets')
+            logger.debug('shutdown websockets')
             try:
                 for ws in set(app['websockets']):
-                    print('close', id(ws))
                     await ws.close(
                         code=WSCloseCode.GOING_AWAY,
                         message='SERVICE_RESTART',
                     )
             except BaseException as e:
-                logging.error('GracefulShutdownWSApplication error', e)
+                logger.error('GracefulShutdownWSApplication error', e)
             finally:
                 raise GracefulExit('GracefulShutdownWSApplication')
 
@@ -161,10 +147,16 @@ class GracefulShutdownWSApplication(aiohttp.web.Application):
 
 def main():
     loop = asyncio.get_event_loop()
-
     app = GracefulShutdownWSApplication(loop=loop)
 
-    ws_fibo_handler = WSTaskExecutorHandler(ProcessPoolExecutor(), get_fibo)
+    executor = ProcessPoolExecutor(max_workers=MAX_WORKERS)
+
+    def executor_shutdown(app):
+        executor.shut()
+
+    app.on_shutdown.append(executor_shutdown)
+
+    ws_fibo_handler = WSTaskExecutorHandler(executor, get_fibo_result)
     app.router.add_route('GET', '/fibo', ws_fibo_handler)
 
     aiohttp.web.run_app(app, host=HOST, port=PORT, handle_signals=False)
@@ -172,5 +164,4 @@ def main():
 
 if __name__ == '__main__':
     logging.root.setLevel(logging.DEBUG)
-    logging.getLogger("asyncio").setLevel(logging.DEBUG)
     main()

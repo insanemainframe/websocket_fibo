@@ -1,0 +1,2 @@
+aioconsole==0.1.11
+aiohttp==3.5.1
