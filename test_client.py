@@ -8,6 +8,10 @@ from aiohttp.http_websocket import WSCloseCode
 from aioconsole import ainput, aprint
 
 
+HOST = os.getenv('HOST', '0.0.0.0')
+PORT = int(os.getenv('PORT', 8000))
+
+
 async def user_interaction(ws):
     cmd = await ainput(">>> ")
     if cmd == 'q':
@@ -17,11 +21,9 @@ async def user_interaction(ws):
 
 
 async def main():
-    host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', 8000))
     async with aiohttp.ClientSession() as session:
         async with session.ws_connect(
-            'http://%s:%s/fibo' % (host, port)
+            'http://%s:%s/fibo' % (HOST, PORT)
         ) as ws:
             await ws.send_str(sys.argv[1] if len(sys.argv) > 1 else'')
             async for msg in ws:
@@ -34,9 +36,10 @@ async def main():
                 await aprint(msg.json())
                 await user_interaction(ws)
         if ws.close_code == 1006:
-            await aprint('Abnormal Closure')
+            reason = 'Abnormal Closure'
         else:
-            await aprint('closed: ', WSCloseCode(ws.close_code))
+            reason = WSCloseCode(ws.close_code).name
+        await aprint('closed: %s' % reason)
 
 
 if __name__ == '__main__':
