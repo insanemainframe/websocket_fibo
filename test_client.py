@@ -1,33 +1,41 @@
 #!/usr/bin/env python3.5
-
 import asyncio
 import os
 
 import aiohttp
+from aiohttp.http_websocket import WSCloseCode
+from aioconsole import ainput, aprint
+
+
+async def user_interaction(ws):
+    cmd = await ainput(">>> ")
+    if cmd == 'q':
+        await ws.close()
+    else:
+        await ws.send_str(cmd)
 
 
 async def main():
     host = os.getenv('HOST', '0.0.0.0')
     port = int(os.getenv('PORT', 8000))
-    session = aiohttp.ClientSession()
-    async with session.ws_connect('http://%s:%s/fibo' % (host, port)) as ws:
-
-        await prompt_and_send(ws)
-        async for msg in ws:
-            print('Message received from server:', msg)
-            await prompt_and_send(ws)
-
-            if msg.type in (aiohttp.WSMsgType.CLOSED,
-                            aiohttp.WSMsgType.ERROR):
-                break
-
-
-async def prompt_and_send(ws):
-    new_msg_to_send = input('Type a message to send to the server: ')
-    if new_msg_to_send == 'exit':
-        print('Exiting!')
-        raise SystemExit(0)
-    await ws.send_str(new_msg_to_send)
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect(
+            'http://%s:%s/fibo' % (host, port)
+        ) as ws:
+            await ws.send_str('')
+            async for msg in ws:
+                if msg.type in (
+                    aiohttp.WSMsgType.CLOSE,
+                    aiohttp.WSMsgType.CLOSED,
+                    aiohttp.WSMsgType.ERROR,
+                ):
+                    break
+                await aprint(msg.json())
+                await user_interaction(ws)
+        if ws.close_code == 1006:
+            await aprint('Abnormal Closure')
+        else:
+            await aprint('closed: ', WSCloseCode(ws.close_code))
 
 
 if __name__ == '__main__':
