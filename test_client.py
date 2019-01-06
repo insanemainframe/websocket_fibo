@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.5
 import asyncio
 import os
+import sys
 
 import aiohttp
 from aiohttp.http_websocket import WSCloseCode
@@ -22,7 +23,7 @@ async def main():
         async with session.ws_connect(
             'http://%s:%s/fibo' % (host, port)
         ) as ws:
-            await ws.send_str('')
+            await ws.send_str(sys.argv[1] if len(sys.argv) > 1 else'')
             async for msg in ws:
                 if msg.type in (
                     aiohttp.WSMsgType.CLOSE,
