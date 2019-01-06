@@ -15,10 +15,13 @@ MESSAGE_MAX_SIZE = int(os.getenv('MESSAGE_MAX_SIZE', 20))
 FIBO_MAX_N = int(os.getenv('FIBO_MAX_N', 10 ** 12))
 MAX_WORKERS = int(os.getenv('MAX_WORKERS', 4))
 TIMEOUT = int(os.getenv('TIMEOUT', 0))
-ERROR_NUMBER = int(os.getenv('TIMEOUT', 42))
+ERROR_NUMBER = int(os.getenv('ERROR_NUMBER', 42))
 
 
 class ErrorResult(Exception):
+    """
+    Error returning to client
+    """
     error = 'some error occurred'
 
     def __init__(self, error):
@@ -27,6 +30,9 @@ class ErrorResult(Exception):
 
 
 def fibo(n):
+    """
+    Returns Fibonacci numbers or raise exception for magic ERROR_NUMBER
+    """
     if n == ERROR_NUMBER:
         raise Exception('Debug Exception %d' % ERROR_NUMBER)
     if FIBO_MAX_N and n > FIBO_MAX_N:
@@ -39,13 +45,21 @@ def fibo(n):
 
 
 def get_fibo_result(message):
+    """
+    Fibonacci numbers task
+    """
     if message and not message.isdigit():
         raise ErrorResult('must be positive integer')
     return fibo(int(message or 0))
 
 
 class WSTaskExecutorHandler:
+    """
+    Asynchronous task websocket handler
+    """
+
     def __init__(self, executor, target):
+        assert callable(target)
         self.executor = executor
         self.target = target
 
@@ -57,40 +71,38 @@ class WSTaskExecutorHandler:
         return ws
 
     async def _handle_msg(self, ws, msg):
+        """
+        Handle client message and close connection, if necccessary
+        """
         logging.debug(msg)
         if msg.type != aiohttp.WSMsgType.TEXT:
             await ws.close(
                 code=WSCloseCode.UNSUPPORTED_DATA,
-                message='UNSUPPORTED_DATA',
             )
         if len(msg.data) > MESSAGE_MAX_SIZE:
             await ws.close(
                 code=WSCloseCode.MESSAGE_TOO_BIG,
-                message='MESSAGE_TOO_BIG',
             )
-        if msg.data == 'close':
+        if msg.data == 'q':
             await ws.close()
+            return
         try:
-            response_data = await self._get_response(msg.data.strip())
+            response_data = await self._run_task(msg.data.strip())
             await ws.send_json(response_data)
         except asyncio.futures.TimeoutError:
             await ws.close(
                 code=WSCloseCode.TRY_AGAIN_LATER,
-                message='TRY_AGAIN_LATER',
-            )
-        except asyncio.CancelledError as e:
-            await ws.close(
-                code=WSCloseCode.GOING_AWAY,
-                message='GOING_AWAY',
             )
         except Exception as e:
             logging.exception('INTERNAL_ERROR %s', e)
             await ws.close(
                 code=WSCloseCode.INTERNAL_ERROR,
-                message='INTERNAL_ERROR',
             )
 
-    async def _get_response(self, message):
+    async def _run_task(self, message):
+        """
+        Run asynchronous task in executor and return result dict
+        """
         loop = asyncio.get_event_loop()
         try:
             result_future = loop.run_in_executor(

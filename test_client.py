@@ -14,10 +14,7 @@ PORT = int(os.getenv('PORT', 8000))
 
 async def user_interaction(ws):
     cmd = await ainput(">>> ")
-    if cmd == 'q':
-        await ws.close()
-    else:
-        await ws.send_str(cmd)
+    await ws.send_str(cmd)
 
 
 async def main():
