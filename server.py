@@ -7,6 +7,8 @@ import asyncio
 import aiohttp.web
 from aiohttp.http_websocket import WSCloseCode
 
+HOST = os.getenv('HOST', '0.0.0.0')
+PORT = int(os.getenv('PORT', 8000))
 
 FIBO_CACHE_SIZE = int(os.getenv('FIBO_CACHE_SIZE', 128))
 FIBO_MAX_N = int(os.getenv('FIBO_MAX_N', 10 ** 6))
@@ -39,8 +41,8 @@ async def get_fibo(n):
             ),
         )
     # for dev
-    if n == 4242:
-        raise Exception()
+    if n == 42:
+        raise Exception('debug error')
     return fibo(n)
 
 
@@ -97,13 +99,10 @@ async def websocket_handler(request):
 
 
 def main():
-    host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', 8000))
-
     loop = asyncio.get_event_loop()
     app = aiohttp.web.Application(loop=loop)
     app.router.add_route('GET', '/fibo', websocket_handler)
-    aiohttp.web.run_app(app, host=host, port=port)
+    aiohttp.web.run_app(app, host=HOST, port=PORT)
 
 
 if __name__ == '__main__':
