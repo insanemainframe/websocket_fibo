@@ -117,7 +117,7 @@ class WSTaskExecutorHandler:
         loop = asyncio.get_event_loop()
         try:
             result_future = loop.run_in_executor(
-                self.executor, fibo_task, message,
+                self.executor, self.target, message,
             )
             result = await asyncio.wait_for(
                 result_future,
