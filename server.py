@@ -53,7 +53,7 @@ def fibo(n):
     return a
 
 
-def get_fibo_result(message):
+def fibo_task(message):
     """
     Fibonacci numbers task
     """
@@ -117,7 +117,7 @@ class WSTaskExecutorHandler:
         loop = asyncio.get_event_loop()
         try:
             result_future = loop.run_in_executor(
-                self.executor, get_fibo_result, message,
+                self.executor, fibo_task, message,
             )
             result = await asyncio.wait_for(
                 result_future,
@@ -141,7 +141,7 @@ def main():
 
     executor = ProcessPoolExecutor(max_workers=MAX_WORKERS)
 
-    ws_fibo_handler = WSTaskExecutorHandler(executor, get_fibo_result)
+    ws_fibo_handler = WSTaskExecutorHandler(executor, fibo_task)
     app.router.add_route('GET', '/fibo', ws_fibo_handler)
 
     aiohttp.web.run_app(app, host=HOST, port=PORT, handle_signals=True)
