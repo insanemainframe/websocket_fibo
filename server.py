@@ -13,9 +13,14 @@ PORT = int(os.getenv('PORT', 8000))
 
 MESSAGE_MAX_SIZE = int(os.getenv('MESSAGE_MAX_SIZE', 20))
 FIBO_MAX_N = int(os.getenv('FIBO_MAX_N', 10 ** 12))
-MAX_WORKERS = int(os.getenv('MAX_WORKERS', 4))
+MAX_WORKERS = int(os.getenv('MAX_WORKERS', 2))
 TIMEOUT = int(os.getenv('TIMEOUT', 0))
-ERROR_NUMBER = int(os.getenv('ERROR_NUMBER', 42))
+
+os.environ.setdefault('ERROR_NUMBER', '42')
+if os.getenv('ERROR_NUMBER'):
+    ERROR_NUMBER = int(os.getenv('ERROR_NUMBER'))
+else:
+    ERROR_NUMBER = None
 
 
 class ErrorResult(Exception):
@@ -34,13 +39,17 @@ def fibo(n):
     Returns Fibonacci numbers or raise exception for magic ERROR_NUMBER
     """
     if n == ERROR_NUMBER:
-        raise Exception('Debug Exception %d' % ERROR_NUMBER)
-    if FIBO_MAX_N and n > FIBO_MAX_N:
-        raise ErrorResult('must be less than or equal %s ' % FIBO_MAX_N)
-
+        # for debug
+        raise Exception('ERROR_NUMBER Exception %d' % ERROR_NUMBER)
+    if FIBO_MAX_N and abs(n) > FIBO_MAX_N:
+        raise ErrorResult(
+            'absolute value must be less than or equal %s ' % FIBO_MAX_N
+        )
     a, b = 0, 1
-    for i in range(n):
+    for i in range(abs(n)):
         a, b = b, a + b
+    if n < 0 and not n % 2:
+        return -a
     return a
 
 
@@ -48,9 +57,11 @@ def get_fibo_result(message):
     """
     Fibonacci numbers task
     """
-    if message and not message.isdigit():
-        raise ErrorResult('must be positive integer')
-    return fibo(int(message or 0))
+    try:
+        n = int(message or 0)
+    except ValueError:
+        raise ErrorResult('must be integer')
+    return fibo(n)
 
 
 class WSTaskExecutorHandler:
