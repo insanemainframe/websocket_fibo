@@ -14,7 +14,7 @@ PORT = int(os.getenv('PORT', 8000))
 MESSAGE_MAX_SIZE = int(os.getenv('MESSAGE_MAX_SIZE', 20))
 FIBO_MAX_N = int(os.getenv('FIBO_MAX_N', 10 ** 12))
 MAX_WORKERS = int(os.getenv('MAX_WORKERS', 2))
-TIMEOUT = int(os.getenv('TIMEOUT', 0))
+TIMEOUT = int(os.getenv('TIMEOUT', 10))
 
 os.environ.setdefault('ERROR_NUMBER', '42')
 if os.getenv('ERROR_NUMBER'):
@@ -77,8 +77,17 @@ class WSTaskExecutorHandler:
     async def __call__(self, request):
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(request)
-        async for msg in ws:
-            await self._handle_msg(ws, msg)
+        try:
+            async for msg in ws:
+                await self._handle_msg(ws, msg)
+        except asyncio.CancelledError as e:
+            await ws.close()
+        except Exception as e:
+            logging.exception('INTERNAL_ERROR %s', e)
+            await ws.close(
+                code=WSCloseCode.INTERNAL_ERROR,
+            )
+
         return ws
 
     async def _handle_msg(self, ws, msg):
@@ -100,14 +109,12 @@ class WSTaskExecutorHandler:
         try:
             response_data = await self._run_task(msg.data.strip())
             await ws.send_json(response_data)
-        except asyncio.futures.TimeoutError:
+        except asyncio.futures.TimeoutError as e:
+            logging.critical(
+                'timeouted %s(%s)', self.target.__name__, msg
+            )
             await ws.close(
                 code=WSCloseCode.TRY_AGAIN_LATER,
-            )
-        except Exception as e:
-            logging.exception('INTERNAL_ERROR %s', e)
-            await ws.close(
-                code=WSCloseCode.INTERNAL_ERROR,
             )
 
     async def _run_task(self, message):
