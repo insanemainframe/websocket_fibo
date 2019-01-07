@@ -66,7 +66,7 @@ def fibo_task(message):
 
 class WSTaskExecutorHandler:
     """
-    Asynchronous task websocket handler
+    Websocket handler returning asynchronous task result
     """
 
     def __init__(self, executor, target):
